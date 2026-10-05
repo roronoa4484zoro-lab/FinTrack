@@ -53,15 +53,18 @@ export async function POST(request: Request) {
     3. If you don't know, say you don't have enough data.
     4. Never ask for or store the user's personal identity.`;
 
-    // 3. Call AI API (Generic wrapper for OpenAI/Claude)
-    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    // 3. Call AI API (Generic wrapper for OpenAI/NVIDIA/Claude)
+    const baseUrl = process.env.AI_BASE_URL || 'https://api.openai.com/v1';
+    const model = process.env.AI_MODEL || 'gpt-4o-mini';
+
+    const aiResponse = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.AI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: model,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: question }
