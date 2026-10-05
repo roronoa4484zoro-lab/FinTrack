@@ -20,17 +20,22 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // SECURITY WIN: Ownership check - Only fetch transactions for the logged-in user
     const result = await query(
       'SELECT t.id, t.amount, t.description, t.date, c.name as category_name FROM transactions t JOIN categories c ON t.category_id = c.id WHERE t.user_id = $1 ORDER BY t.date DESC',
       [userId]
     );
 
-    // Decrypt the amounts before sending them to the frontend
-    const transactions = result.rows.map((row: any) => ({
-      ...row,
-      amount: decrypt(row.amount, ENCRYPTION_KEY)
-    }));
+    const transactions = result.rows.map((row: any) => {
+      try {
+        return {
+          ...row,
+          amount: decrypt(row.amount, ENCRYPTION_KEY)
+        };
+      } catch (e) {
+        console.error(`Decryption failed for transaction ${row.id}:`, e);
+        return { ...row, amount: 'DECRYPTION_ERROR' };
+      }
+    });
 
     return NextResponse.json(transactions, { status: 200 });
   } catch (error: any) {
