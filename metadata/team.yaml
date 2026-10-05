@@ -1,19 +1,15 @@
-# Build Secure 24 — Team Metadata
-# Team Composition Rule: Exactly 2 or 4 registered participants.
-# - If your team has 2 members: provide Member 1 and Member 2, and omit/delete Member 3 and 4.
-# - If your team has 4 members: provide all 4 members.
-
 team:
-  team_id: ""
-  name: ""
-  repository: "" # URL of the newly created GitHub repository for this project
-
-members:
-  - name: ""
-    email: ""
-  - name: ""
-    email: ""
-  - name: ""
-    email: ""
-  - name: ""
-    email: ""
+  id: "26"
+  name: "sudo secure"
+  size: 4
+  repository: "https://github.com/roronoa4484zoro-lab/FinTrack.git"
+  members:
+    - name: "Siddartha"
+      email: "25p61a62b0@vbityd.ac.in"
+      role: "Team Leader"
+    - name: "Subramanya Karthik"
+      email: "subramanyakarthik2@gmail.com"
+    - name: "Yamajala Phani Kamalesh"
+      email: "yamajalakamalesh@gmail.com"
+    - name: "Voruganti Siddhartha"
+      email: "vorugantisiddhartha07@gmail.com"
