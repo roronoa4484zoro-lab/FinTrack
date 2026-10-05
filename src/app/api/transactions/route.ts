@@ -24,24 +24,55 @@ export async function POST(request: Request) {
     const { amount, category_id, description, date } = body;
 
     if (amount === undefined || !category_id) {
-      return NextResponse.json({ error: 'Amount and category are required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Amount and category are required' },
+        { status: 400 }
+      );
     }
 
-    // Ensure amount is treated as a string for encryption
+    // Verify that the category belongs to the authenticated user.
+    const categoryCheck = await query(
+      'SELECT id FROM categories WHERE id = $1 AND user_id = $2',
+      [category_id, userId]
+    );
+
+    if (categoryCheck.rows.length === 0) {
+      return NextResponse.json(
+        { error: 'Invalid category' },
+        { status: 403 }
+      );
+    }
+
+    // Ensure amount is treated as a string for encryption.
     const amountStr = String(amount);
     const encryptedAmount = encrypt(amountStr, ENCRYPTION_KEY);
 
     const result = await query(
-      'INSERT INTO transactions (user_id, category_id, amount, description, date) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-      [userId, category_id, encryptedAmount, description || '', date || new Date().toISOString()]
+      `INSERT INTO transactions
+        (user_id, category_id, amount, description, date)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
+      [
+        userId,
+        category_id,
+        encryptedAmount,
+        description || '',
+        date || new Date().toISOString()
+      ]
     );
 
-    return NextResponse.json({
-      message: 'Transaction recorded securely',
-      id: result.rows[0].id
-    }, { status: 201 });
+    return NextResponse.json(
+      {
+        message: 'Transaction recorded securely',
+        id: result.rows[0].id
+      },
+      { status: 201 }
+    );
   } catch (error: any) {
     console.error('Transaction POST error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
