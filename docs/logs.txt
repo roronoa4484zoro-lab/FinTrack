@@ -693,3 +693,67 @@ Actions Taken:
 * Ran `npm test` verifying 5/5 passed
 * Updated and committed final submission SHA in `metadata/submission.yaml`
 * Pushed all commits to `https://github.com/roronoa4484zoro-lab/FinTrack.git`
+================================================================================
+[2026-10-06T12:30:05+05:30] Authentication Login Flow Root Cause Resolution
+================================================================================
+User Prompt (verbatim):
+You are debugging the existing FinTrack Next.js 15.5.27 application.
+
+CURRENT BUG
+===========
+
+The login page loads correctly at:
+
+http://localhost:3000/login
+
+The user enters a valid-looking email address and password and clicks:
+
+"Sign In"
+
+The UI displays:
+
+"Invalid email or password"
+
+The login request is therefore reaching the authentication endpoint, but authentication is failing.
+
+DO NOT simply bypass password verification.
+DO NOT hardcode credentials.
+DO NOT make every password valid.
+DO NOT remove authentication.
+DO NOT hide the error.
+
+Find the ROOT CAUSE.
+
+Agent Response:
+Diagnosed and resolved the root cause of the login failure:
+1. Traced the full login pipeline across `src/app/login/page.tsx`, `src/app/api/auth/login/route.ts`, `src/lib/auth.ts`, and `src/lib/db.ts`.
+2. Discovered that when remote database sockets timeout during local dev, `db.ts` fell back to an in-memory object whose memory reference was isolated across Next.js distinct compilation workers/subprocesses (register worker vs login worker). As a result, users registered in one route worker were missing from the other route worker's in-memory array (`rowsFound: 0`), leading to 401 'Invalid email or password'.
+3. Updated `src/lib/db.ts` to persist the local resilient store to `.next/fintrack_local_db.json` backed by a process global cache, ensuring consistent account lookup, category association, and transaction persistence across all workers and server instances.
+4. Verified end-to-end user lifecycle:
+   - Registration succeeds (HTTP 201).
+   - Immediate login succeeds (HTTP 200) with `auth_token` cookie created.
+   - Case-insensitive / whitespace email normalization verified (HTTP 200).
+   - Wrong password rejected (HTTP 401).
+   - Non-existent user rejected (HTTP 401).
+   - Protected endpoints (/api/transactions/category, /api/transactions, /api/transactions/list, /api/transactions/summary, /api/ai/analyze) authenticated and returned 200/201.
+   - Rate limiting verified (HTTP 429 triggered).
+   - `npm test` passed 5/5 and `npm run build` compiled 20/20 routes.
+
+Agent Response Summary:
+Resolved the login authentication failure by persisting the resilient local storage in `src/lib/db.ts` across Next.js worker threads and bundles via disk synchronization in `.next/fintrack_local_db.json`. Verified complete REGISTER -> LOGIN -> DASHBOARD -> PROTECTED APIS flow, passed all 5 security test suites, and validated production build.
+
+Commit SHA:
+5cacb073c0715d33af78ae0d48c6f099747ab434
+
+Files Modified / Created:
+* src/lib/db.ts (Modified)
+* metadata/submission.yaml (Modified)
+* docs/logs.txt (Modified)
+
+Actions Taken:
+* Investigated Next.js dev server worker isolation and database query routing
+* Refactored `src/lib/db.ts` with cross-worker persistence
+* Executed end-to-end REGISTER -> LOGIN -> DASHBOARD API test suite
+* Tested case-insensitive emails, invalid passwords, non-existent users, and rate limiting
+* Ran `npm test` and `npm run build`
+* Committed and pushed all changes to `https://github.com/roronoa4484zoro-lab/FinTrack.git`
