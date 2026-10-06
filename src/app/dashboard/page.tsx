@@ -16,7 +16,10 @@ import {
   X,
   Trash2,
   Calendar,
+  AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
+import { formatCurrency, CURRENCY_CONFIG } from '@/lib/currency';
 
 interface SummaryData {
   totalIncome: number;
@@ -95,9 +98,13 @@ export default function Dashboard() {
   const [newTx, setNewTx] = useState({
     amount: '',
     category_id: '',
+    type: 'expense' as 'income' | 'expense',
     description: '',
     date: new Date().toISOString().slice(0, 10),
   });
+
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
 
   const [newBudget, setNewBudget] = useState({
     category_id: '',
@@ -134,6 +141,24 @@ export default function Dashboard() {
     };
   }, []);
 
+  async function fetchUserCategories() {
+    try {
+      setLoadingCategories(true);
+      setCategoriesError(null);
+      const catRes = await fetch('/api/transactions/category');
+      if (catRes.ok) {
+        const catData = await catRes.json();
+        setCategories(Array.isArray(catData) ? catData : []);
+      } else {
+        setCategoriesError('Could not load categories. Please retry.');
+      }
+    } catch {
+      setCategoriesError('Network error loading categories.');
+    } finally {
+      setLoadingCategories(false);
+    }
+  }
+
   async function loadDashboardData() {
     try {
       setLoading(true);
@@ -155,7 +180,13 @@ export default function Dashboard() {
         const txData = await txRes.json();
         setTransactions(txData.transactions || txData || []);
       }
-      if (catRes.ok) setCategories(await catRes.json());
+      if (catRes.ok) {
+        const catData = await catRes.json();
+        setCategories(Array.isArray(catData) ? catData : []);
+        setCategoriesError(null);
+      } else {
+        setCategoriesError('Could not load categories');
+      }
       if (bRes.ok) {
         const bData = await bRes.json();
         setBudgets(bData.budgets || []);
@@ -179,8 +210,18 @@ export default function Dashboard() {
 
   async function handleAddTransaction(e: React.FormEvent) {
     e.preventDefault();
-    if (!newTx.amount || !newTx.category_id) {
-      setFeedbackMsg({ type: 'error', text: 'Please fill amount and category' });
+    if (!newTx.amount || parseFloat(newTx.amount) <= 0) {
+      setFeedbackMsg({ type: 'error', text: 'Please enter a valid amount greater than 0' });
+      return;
+    }
+
+    if (!newTx.category_id) {
+      setFeedbackMsg({ type: 'error', text: 'Please select a valid category' });
+      return;
+    }
+
+    if (!newTx.date) {
+      setFeedbackMsg({ type: 'error', text: 'Please select a valid transaction date' });
       return;
     }
 
@@ -190,21 +231,33 @@ export default function Dashboard() {
       const res = await fetch('/api/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newTx),
+        body: JSON.stringify({
+          amount: parseFloat(newTx.amount).toFixed(2),
+          category_id: newTx.category_id,
+          type: newTx.type,
+          description: newTx.description.trim(),
+          date: newTx.date,
+        }),
       });
 
       if (!res.ok) {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         setFeedbackMsg({ type: 'error', text: err.error || 'Failed to record transaction' });
         return;
       }
 
       setShowAddTxModal(false);
-      setNewTx({ amount: '', category_id: '', description: '', date: new Date().toISOString().slice(0, 10) });
-      loadDashboardData();
+      setNewTx({
+        amount: '',
+        category_id: '',
+        type: 'expense',
+        description: '',
+        date: new Date().toISOString().slice(0, 10),
+      });
+      await loadDashboardData();
       setFeedbackMsg({ type: 'success', text: 'Transaction recorded securely!' });
-    } catch (err: any) {
-      setFeedbackMsg({ type: 'error', text: 'Error connecting to server' });
+    } catch {
+      setFeedbackMsg({ type: 'error', text: 'Error connecting to server. Please try again.' });
     } finally {
       setTxSubmitting(false);
     }
@@ -532,7 +585,7 @@ export default function Dashboard() {
                               t.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
                             }`}
                           >
-                            {t.type === 'income' ? '+' : '-'}${Number(t.amount).toFixed(2)}
+                            {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
                           </p>
                           <button
                             onClick={() => handleDeleteTransaction(t.id)}
@@ -721,71 +774,193 @@ export default function Dashboard() {
         )}
       </main>
 
-      {/* MODAL 1: Add Transaction */}
+      {/* MODAL 1: Add Transaction (Accessible, Non-Overlapping, Type-Segmented) */}
       {showAddTxModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-xl text-slate-900">Record New Transaction</h3>
-              <button onClick={() => setShowAddTxModal(false)} className="text-slate-400 hover:text-slate-600">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="modal-add-tx-title"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAddTxModal(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShowAddTxModal(false);
+          }}
+        >
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto">
+            <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-5">
+              <div>
+                <h3 id="modal-add-tx-title" className="font-bold text-xl text-slate-900">
+                  Record New Transaction
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">Field-level encrypted & isolated to your account</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddTxModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition"
+                aria-label="Close dialog"
+              >
                 <X size={20} />
               </button>
             </div>
 
-            <form onSubmit={handleAddTransaction} className="space-y-4">
+            <form onSubmit={handleAddTransaction} className="space-y-5">
+              {/* Transaction Type Segmented Control */}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Amount ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  placeholder="0.00"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  value={newTx.amount}
-                  onChange={(e) => setNewTx({ ...newTx, amount: e.target.value })}
-                />
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Transaction Type
+                </label>
+                <div className="grid grid-cols-2 gap-3 p-1 bg-slate-100 rounded-2xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const firstIncomeCat = categories.find((c) => c.type === 'income');
+                      setNewTx({
+                        ...newTx,
+                        type: 'income',
+                        category_id: firstIncomeCat ? firstIncomeCat.id : newTx.category_id,
+                      });
+                    }}
+                    className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition ${
+                      newTx.type === 'income'
+                        ? 'bg-emerald-600 text-white shadow-md'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <ArrowUpCircle size={16} /> Income (Inflow)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const firstExpenseCat = categories.find((c) => c.type === 'expense');
+                      setNewTx({
+                        ...newTx,
+                        type: 'expense',
+                        category_id: firstExpenseCat ? firstExpenseCat.id : newTx.category_id,
+                      });
+                    }}
+                    className={`flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold transition ${
+                      newTx.type === 'expense'
+                        ? 'bg-rose-600 text-white shadow-md'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <ArrowDownCircle size={16} /> Expense (Outflow)
+                  </button>
+                </div>
               </div>
 
+              {/* Amount Field */}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Category</label>
-                <select
-                  required
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                  value={newTx.category_id}
-                  onChange={(e) => setNewTx({ ...newTx, category_id: e.target.value })}
-                >
-                  <option value="">Select Category</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.type})
-                    </option>
-                  ))}
-                </select>
+                <label htmlFor="tx-amount" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Amount ({CURRENCY_CONFIG.symbol})
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">
+                    {CURRENCY_CONFIG.symbol}
+                  </span>
+                  <input
+                    id="tx-amount"
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    max="100000000"
+                    required
+                    placeholder="0.00"
+                    className="w-full pl-9 pr-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-900"
+                    value={newTx.amount}
+                    onChange={(e) => setNewTx({ ...newTx, amount: e.target.value })}
+                  />
+                </div>
               </div>
 
+              {/* Category Field with Dynamic States */}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Description / Note</label>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label htmlFor="tx-category" className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Category
+                  </label>
+                  {categoriesError && (
+                    <button
+                      type="button"
+                      onClick={fetchUserCategories}
+                      className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 font-semibold"
+                    >
+                      <RefreshCw size={12} /> Retry Loading
+                    </button>
+                  )}
+                </div>
+
+                {loadingCategories ? (
+                  <div className="w-full px-3.5 py-2.5 text-xs text-slate-500 bg-slate-100 rounded-xl border border-slate-200 flex items-center gap-2 animate-pulse">
+                    <RefreshCw size={14} className="animate-spin text-blue-600" />
+                    Loading your categories...
+                  </div>
+                ) : categoriesError ? (
+                  <div className="w-full p-2.5 text-xs text-rose-600 bg-rose-50 rounded-xl border border-rose-200 flex items-center gap-2">
+                    <AlertCircle size={14} />
+                    <span>{categoriesError}</span>
+                  </div>
+                ) : (
+                  <select
+                    id="tx-category"
+                    required
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-900 cursor-pointer"
+                    value={newTx.category_id}
+                    onChange={(e) => setNewTx({ ...newTx, category_id: e.target.value })}
+                  >
+                    <option value="">Select Category</option>
+                    {categories
+                      .filter((c) => c.type === newTx.type)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    {categories.filter((c) => c.type === newTx.type).length === 0 && (
+                      <option disabled value="">
+                        No {newTx.type} categories found
+                      </option>
+                    )}
+                  </select>
+                )}
+              </div>
+
+              {/* Description / Note Field */}
+              <div>
+                <label htmlFor="tx-desc" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Description / Note (Optional)
+                </label>
                 <input
+                  id="tx-desc"
                   type="text"
+                  maxLength={255}
                   placeholder="e.g. Monthly Grocery Shopping"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-900"
                   value={newTx.description}
                   onChange={(e) => setNewTx({ ...newTx, description: e.target.value })}
                 />
               </div>
 
+              {/* Date Field */}
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Date</label>
+                <label htmlFor="tx-date" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Transaction Date
+                </label>
                 <input
+                  id="tx-date"
                   type="date"
                   required
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-900"
                   value={newTx.date}
                   onChange={(e) => setNewTx({ ...newTx, date: e.target.value })}
                 />
               </div>
 
-              <div className="pt-2 flex gap-3">
+              {/* Modal Actions */}
+              <div className="pt-3 flex gap-3 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setShowAddTxModal(false)}
@@ -795,10 +970,16 @@ export default function Dashboard() {
                 </button>
                 <button
                   type="submit"
-                  disabled={txSubmitting}
-                  className="w-1/2 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-md disabled:opacity-50"
+                  disabled={txSubmitting || loadingCategories}
+                  className="w-1/2 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {txSubmitting ? 'Saving...' : 'Save Securely'}
+                  {txSubmitting ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    'Save Securely'
+                  )}
                 </button>
               </div>
             </form>
@@ -942,7 +1123,7 @@ function StatTile({ title, amount, icon, color, subtext }: any) {
       <div className="p-3 bg-slate-50 rounded-xl">{icon}</div>
       <div>
         <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{title}</p>
-        <p className={`text-2xl font-bold ${color} mt-1`}>${(amount || 0).toFixed(2)}</p>
+        <p className={`text-2xl font-bold ${color} mt-1`}>{formatCurrency(amount || 0)}</p>
         <p className="text-xs text-slate-400 mt-0.5">{subtext}</p>
       </div>
     </div>

@@ -10,12 +10,44 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const result = await query(
+    let result = await query(
       'SELECT id, name, type, created_at FROM categories WHERE user_id = $1 ORDER BY name ASC',
       [userId]
     );
 
-    return NextResponse.json(result.rows, { status: 200 });
+    // If the user has no categories, auto-seed the standard default categories
+    if (!result.rows || result.rows.length === 0) {
+      const defaultCategories = [
+        { name: 'Salary', type: 'income' },
+        { name: 'Investments', type: 'income' },
+        { name: 'Freelance & Side Hustles', type: 'income' },
+        { name: 'Food & Dining', type: 'expense' },
+        { name: 'Groceries', type: 'expense' },
+        { name: 'Transport & Fuel', type: 'expense' },
+        { name: 'Rent & Utilities', type: 'expense' },
+        { name: 'Shopping', type: 'expense' },
+        { name: 'Entertainment', type: 'expense' },
+        { name: 'Healthcare', type: 'expense' },
+      ];
+
+      for (const cat of defaultCategories) {
+        try {
+          await query(
+            'INSERT INTO categories (user_id, name, type) VALUES ($1, $2, $3) ON CONFLICT (user_id, name) DO NOTHING',
+            [userId, cat.name, cat.type]
+          );
+        } catch {
+          // Continue
+        }
+      }
+
+      result = await query(
+        'SELECT id, name, type, created_at FROM categories WHERE user_id = $1 ORDER BY name ASC',
+        [userId]
+      );
+    }
+
+    return NextResponse.json(result.rows || [], { status: 200 });
   } catch (error: any) {
     console.error('Fetch categories error:', error?.message);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

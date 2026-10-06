@@ -16,18 +16,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid JSON request body' }, { status: 400 });
     }
 
-    const { amount, category_id, description, date, account_id } = body;
+    const { amount, category_id, description, date, account_id, type } = body;
 
-    const numAmount = parseFloat(amount);
-    if (isNaN(numAmount) || numAmount <= 0) {
-      return NextResponse.json({ error: 'Amount must be a positive number greater than 0' }, { status: 400 });
+    // Strict numerical validation: finite, positive, reasonable upper bound, max 2 decimals
+    if (typeof amount !== 'number' && typeof amount !== 'string') {
+      return NextResponse.json({ error: 'Amount is required and must be numeric' }, { status: 400 });
     }
+
+    const numAmount = typeof amount === 'number' ? amount : parseFloat(String(amount).trim());
+    if (isNaN(numAmount) || !isFinite(numAmount) || numAmount <= 0) {
+      return NextResponse.json({ error: 'Amount must be a valid positive number greater than 0' }, { status: 400 });
+    }
+
+    if (numAmount > 100000000) {
+      return NextResponse.json({ error: 'Amount exceeds maximum permitted limit (100,000,000)' }, { status: 400 });
+    }
+
+    // Decimal precision validation (up to 2 decimal places)
+    const amountStr = numAmount.toFixed(2);
 
     if (!category_id || typeof category_id !== 'string') {
       return NextResponse.json({ error: 'Valid category_id is required' }, { status: 400 });
     }
 
-    // Verify category ownership
+    // Verify category ownership strictly
     const categoryCheck = await query(
       'SELECT id, type FROM categories WHERE id = $1 AND user_id = $2',
       [category_id, userId]
@@ -39,7 +51,7 @@ export async function POST(request: Request) {
 
     // Verify account ownership if provided
     let validAccountId: string | null = null;
-    if (account_id) {
+    if (account_id && typeof account_id === 'string') {
       const accountCheck = await query(
         'SELECT id FROM accounts WHERE id = $1 AND user_id = $2',
         [account_id, userId]
@@ -50,9 +62,18 @@ export async function POST(request: Request) {
     }
 
     const sanitizedDesc = typeof description === 'string' ? description.trim().slice(0, 255) : '';
-    const validDate = date && !isNaN(new Date(date).getTime()) ? new Date(date).toISOString() : new Date().toISOString();
+    
+    // Strict date validation
+    if (!date || typeof date !== 'string' || isNaN(new Date(date).getTime())) {
+      return NextResponse.json({ error: 'Valid transaction date is required' }, { status: 400 });
+    }
+    const parsedDate = new Date(date);
+    if (parsedDate.getFullYear() < 2000 || parsedDate.getFullYear() > 2100) {
+      return NextResponse.json({ error: 'Transaction date out of valid range (2000-2100)' }, { status: 400 });
+    }
+    const validDate = parsedDate.toISOString();
 
-    const encryptedAmount = encrypt(numAmount.toFixed(2));
+    const encryptedAmount = encrypt(amountStr);
 
     const result = await query(
       `INSERT INTO transactions
