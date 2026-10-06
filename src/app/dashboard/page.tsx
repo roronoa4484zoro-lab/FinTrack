@@ -428,7 +428,18 @@ export default function Dashboard() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setShowAddTxModal(true)}
+              onClick={() => {
+                const defaultCat = categories.find((c) => c.type === 'expense') || categories[0];
+                setNewTx({
+                  amount: '',
+                  category_id: defaultCat ? defaultCat.id : '',
+                  type: 'expense',
+                  description: '',
+                  date: new Date().toISOString().slice(0, 10),
+                });
+                setModalError(null);
+                setShowAddTxModal(true);
+              }}
               className="flex items-center gap-2 bg-blue-600 text-white font-medium text-sm px-4 py-2.5 rounded-xl hover:bg-blue-700 shadow-sm transition active:scale-95"
             >
               <Plus size={18} /> Add Transaction
