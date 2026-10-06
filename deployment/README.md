@@ -49,3 +49,24 @@ FinTrack is a secure personal finance application built with Next.js 15 App Rout
    ```bash
    npm start
    ```
+
+---
+
+## Render Deployment Settings
+
+To ensure Render builds the Next.js App Router project successfully without directory resolution errors:
+
+1. **Root Directory**: Leave **BLANK** (or set to `./`).
+   * *Critical Note*: Do **NOT** set Root Directory to `src`. Setting `src` causes Render to execute from `src/`, where Next.js cannot find `package.json` or `./src/app`.
+2. **Build Command**: `npm install && npm run build`
+3. **Start Command**: `npm start`
+4. **Environment**: `Node`
+5. **Branch**: `main`
+6. **Environment Variables**:
+   * `DATABASE_URL`: Your hosted PostgreSQL connection string
+   * `JWT_SECRET`: HS256 JWT signing secret
+   * `ENCRYPTION_KEY`: 32-byte field encryption key
+   * `NODE_ENV`: `production`
+
+A `render.yaml` configuration is also included at the project root for automatic deployment specification.
+
