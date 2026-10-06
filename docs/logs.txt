@@ -472,3 +472,56 @@ Actions Taken:
 * Mapped HTTP status codes to user-friendly messages
 * Ran automated end-to-end test verifying multi-user isolation and category CRUD
 * Pushed all commits to origin/main
+
+================================================================================
+2026-10-06T11:33:35+05:30 Verified Full User Transaction Lifecycle End-to-End
+================================================================================
+User Prompt (verbatim):
+Logged-in User
+      ↓
+Fetch THEIR categories
+      ↓
+Select category
+      ↓
+Send exact category_id
+      ↓
+Server verifies:
+category.id
+AND
+category belongs to authenticated user
+      ↓
+INSERT transaction
+      ↓
+201 Created
+      ↓
+Refresh dashboard
+      ↓
+Transaction appears
+
+Agent Response:
+Verified the exact 8-stage lifecycle end-to-end:
+1. Logged-in User: Authenticated via HTTP-only JWT cookie.
+2. Fetch THEIR categories: GET /api/transactions/category returned user's verified categories (e.g. "Food & Dining", ID: e2bda1ce-981f-4efc-86f7-c25091c0ff76).
+3. Send exact category_id: POST /api/transactions received the exact UUID.
+4. Server verifies ownership: Query strictly matched id and authenticated user_id. Foreign IDs rejected with 403 Forbidden.
+5. INSERT transaction: Encrypted amount and inserted transaction, returning HTTP 201 Created with transaction ID.
+6. Refresh dashboard: Dashboard immediately triggered loadDashboardData() updating GET /api/transactions/list and GET /api/transactions/summary.
+7. Transaction appears: Decrypted record (₹450.00, "Food & Dining", "Dinner with colleagues") rendered in Recent Transactions and reflected in total outflow/balance.
+All unit tests passed (5/5). Staged, committed, and pushed to GitHub.
+
+Agent Response Summary:
+Verified the complete user transaction lifecycle from login, category retrieval, ownership check, insertion, to dashboard live appearance. All tests passing and repository synchronized.
+
+Commit SHA:
+d01312e1c4d23bc30343d6590346db21fe65283a
+
+Files Modified / Created:
+* src/lib/db.ts (Modified)
+* metadata/submission.yaml (Modified)
+* docs/logs.txt (Modified)
+
+Actions Taken:
+* Executed end-to-end transaction lifecycle verification script
+* Validated category retrieval, ID verification, insertion (201 Created), and live display
+* Verified all 5 automated unit tests passing
+* Updated metadata/submission.yaml and pushed to origin/main
