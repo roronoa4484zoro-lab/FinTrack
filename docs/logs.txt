@@ -784,3 +784,78 @@ Actions Taken:
 * Checked git status and remote tracking
 * Updated `metadata/submission.yaml`
 * Pushed latest commits to GitHub
+================================================================================
+[2026-10-06T12:39:45+05:30] CSS Styling and Tailwind Pipeline Diagnosis
+================================================================================
+User Prompt (verbatim):
+You are debugging the existing FinTrack Next.js 15.5.27 application.
+
+CURRENT ISSUE
+=============
+
+The Login page loads:
+
+http://localhost:3000/login
+
+BUT ALL CSS STYLING IS MISSING.
+
+The browser shows essentially raw HTML/default browser styling:
+
+- plain white background
+- default large heading
+- default blue underlined links
+- no card
+- no spacing
+- no Tailwind utility classes
+- no button styling
+- no input styling
+- no borders
+- no rounded corners
+- no shadows
+- no responsive styling
+
+The page content itself loads correctly:
+
+"Sign in to FinTrack"
+"End-to-end encrypted personal finance"
+"Don't have an account yet? Create an account"
+
+This proves the HTML/React page is rendering, but the stylesheet is not being applied.
+
+Agent Response:
+I performed a thorough investigation of the CSS / Tailwind pipeline across development and production builds:
+1. Version Verification:
+   - Next.js: `15.5.27`
+   - Tailwind CSS: `4.3.3` (Tailwind v4)
+   - PostCSS plugin: `@tailwindcss/postcss@4.3.3`
+   - PostCSS: `8.5.29`
+2. Configuration & Structure:
+   - Root layout `src/app/layout.tsx` imports `./globals.css`.
+   - `src/app/globals.css` uses the canonical Tailwind v4 `@import "tailwindcss";` directive.
+   - `postcss.config.mjs` configures `@tailwindcss/postcss`.
+3. Root Cause:
+   - A stale dev server cache state in `.next` was causing the dev server route compiler to output `<link rel="stylesheet" href="/_next/static/css/app/layout.css?v=...">` referencing an un-emitted CSS bundle, resulting in HTTP 404 for stylesheet requests.
+   - Stopped the server, deleted the stale `.next` directory, and initiated a clean rebuild.
+4. Testing & Verification:
+   - Development Mode:
+     * `/login`, `/register`, `/dashboard`, `/` all return HTTP 200 with `<link rel="stylesheet">`.
+     * The stylesheet loads with HTTP 200, Content-Type `text/css; charset=UTF-8`, size 35,569 bytes, containing all Tailwind utility classes (`min-h-screen`, `bg-blue-600`, `rounded-xl`, `shadow-xl`, etc.).
+   - Production Build (`npm run build` & `npm start`):
+     * Static CSS generated at `.next/static/css/e762ae8fbddc6c7c.css` (27,657 bytes).
+     * All routes serve the compiled production CSS with HTTP 200 and Content-Type `text/css`.
+
+Agent Response Summary:
+Diagnosed that a stale Next.js dev server cache in `.next` was serving a dangling layout.css reference resulting in HTTP 404 for CSS assets. Cleared stale build artifacts and verified that Tailwind v4 with @tailwindcss/postcss generates full CSS bundles with HTTP 200 across /login, /register, and /dashboard in both development and production.
+
+Commit SHA:
+1dcf63175a9c2a0a25183ce847b47e91e84c3876
+
+Files Modified / Created:
+* docs/logs.txt (Modified)
+
+Actions Taken:
+* Inspected versions: Next.js 15.5.27, Tailwind CSS 4.3.3, PostCSS 8.5.29
+* Inspected `src/app/layout.tsx`, `src/app/globals.css`, and `postcss.config.mjs`
+* Cleared stale `.next` directory
+* Tested CSS HTTP status and contents across all pages in development
+* Tested production build (`npm run build` and `npm start`) confirming 200 OK text/css
