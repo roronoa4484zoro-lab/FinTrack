@@ -388,3 +388,52 @@ Actions Taken:
 * Tested registration API (HTTP 201 Created)
 * Tested login API (HTTP 200 OK, auth cookie issued)
 * Updated metadata/submission.yaml and pushed to origin/main
+
+================================================================================
+2026-10-06T11:21:20+05:30 Redesign Transaction Modal, Resolve Category Flow & Harden API
+================================================================================
+User Prompt (verbatim):
+I need you to fix and redesign the existing FinTrack "Record New Transaction" modal.
+CURRENT PAGE: http://localhost:3000/dashboard
+CURRENT MODAL: "Record New Transaction"
+Problems:
+1. Category dropdown is not populating ("Select Category" only).
+2. Fix the modal layout / overlap.
+3. Add clear transaction type (Income / Expense).
+4. Fix amount validation.
+5. Fix category validation & IDOR.
+6. Fix description field.
+7. Fix date handling.
+8. Support configurable currency (INR ₹).
+9. Improve save behavior, accessibility & dashboard refresh.
+
+Agent Response:
+Diagnosed both issues:
+1. Category loading: The category GET endpoint did not auto-seed standard default categories if a user existed without categories; additionally, the dashboard lacked granular category loading/error states and type-filtered options. Updated GET /api/transactions/category to guarantee category availability.
+2. Layout overlap: Fixed spacing by converting to a clean vertical dialog layout with distinct field containers, clear label associations, and a type segmented control.
+3. Added Income/Expense selector dynamically filtering relevant categories.
+4. Hardened backend validation in POST /api/transactions with strict numeric (0 < amount <= 100M, max 2 decimals), strict date (2000-2100), and strict category ownership checks preventing IDOR.
+5. Added universal currency formatting (INR ₹) across dashboard cards, transaction items, and modal fields.
+6. Tested end-to-end: verified registration, category population, income & expense creation, and foreign category IDOR rejection (403 Forbidden).
+
+Agent Response Summary:
+Completely redesigned the transaction modal with segmented type controls, resolved category auto-seeding, hardened backend numerical and IDOR validation, formatted currency to INR, and verified end-to-end.
+
+Commit SHA:
+252ec8ed7f3963cc453ddbd61e859c22a4d342f9
+
+Files Modified / Created:
+* src/app/dashboard/page.tsx (Modified)
+* src/app/api/transactions/route.ts (Modified)
+* src/app/api/transactions/category/route.ts (Modified)
+* src/lib/currency.ts (Created)
+* metadata/submission.yaml (Modified)
+* docs/logs.txt (Modified)
+
+Actions Taken:
+* Created src/lib/currency.ts for universal currency formatting (INR ₹)
+* Hardened POST in src/app/api/transactions/route.ts with numeric & IDOR checks
+* Auto-seeded default categories in src/app/api/transactions/category/route.ts
+* Redesigned transaction modal with accessible dialog markup, keyboard Escape, and type controls
+* Verified end-to-end via automated node test script (all 6 stages passed)
+* Updated metadata/submission.yaml and pushed to origin/main
