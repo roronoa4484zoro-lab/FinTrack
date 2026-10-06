@@ -39,9 +39,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Valid category_id is required' }, { status: 400 });
     }
 
-    // Verify category ownership strictly
+    // Verify category ownership strictly (allowing user-owned and global default categories)
     const categoryCheck = await query(
-      'SELECT id, type FROM categories WHERE id = $1 AND user_id = $2',
+      'SELECT id, type FROM categories WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)',
       [category_id, userId]
     );
 
@@ -127,7 +127,7 @@ export async function PUT(request: Request) {
     let targetCategoryId = existingCheck.rows[0].category_id;
     if (category_id) {
       const categoryCheck = await query(
-        'SELECT id FROM categories WHERE id = $1 AND user_id = $2',
+        'SELECT id FROM categories WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)',
         [category_id, userId]
       );
       if (categoryCheck.rows.length === 0) {

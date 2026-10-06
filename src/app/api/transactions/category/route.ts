@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     }
 
     let result = await query(
-      'SELECT id, name, type, created_at FROM categories WHERE user_id = $1 ORDER BY name ASC',
+      'SELECT id, name, type, created_at FROM categories WHERE user_id = $1 OR user_id IS NULL ORDER BY name ASC',
       [userId]
     );
 
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
       for (const cat of defaultCategories) {
         try {
           await query(
-            'INSERT INTO categories (user_id, name, type) VALUES ($1, $2, $3) ON CONFLICT (user_id, name) DO NOTHING',
+            'INSERT INTO categories (user_id, name, type) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
             [userId, cat.name, cat.type]
           );
         } catch {
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
       }
 
       result = await query(
-        'SELECT id, name, type, created_at FROM categories WHERE user_id = $1 ORDER BY name ASC',
+        'SELECT id, name, type, created_at FROM categories WHERE user_id = $1 OR user_id IS NULL ORDER BY name ASC',
         [userId]
       );
     }

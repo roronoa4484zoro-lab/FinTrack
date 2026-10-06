@@ -10,11 +10,10 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS categories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     name VARCHAR(100) NOT NULL,
     type VARCHAR(20) NOT NULL CHECK (type IN ('income', 'expense')),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (user_id, name)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS transactions (
@@ -43,6 +42,7 @@ CREATE TABLE IF NOT EXISTS budgets (
     amount NUMERIC(14, 2) NOT NULL CHECK (amount > 0),
     month VARCHAR(7) NOT NULL, -- format YYYY-MM
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (user_id, category_id, month)
 );
 
@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS goals (
     target_amount NUMERIC(14, 2) NOT NULL CHECK (target_amount > 0),
     current_amount NUMERIC(14, 2) NOT NULL DEFAULT 0.00 CHECK (current_amount >= 0),
     target_date DATE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS recurring_transactions (
@@ -98,4 +99,24 @@ CREATE INDEX IF NOT EXISTS idx_recurring_user_active
 
 CREATE INDEX IF NOT EXISTS idx_accounts_user_id
     ON accounts(user_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_user_name
+    ON categories(COALESCE(user_id, '00000000-0000-0000-0000-000000000000'::uuid), name);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_budgets_user_cat_month
+    ON budgets(user_id, category_id, month);
+
+INSERT INTO categories (name, type, user_id) VALUES
+    ('Salary', 'income', NULL),
+    ('Investments', 'income', NULL),
+    ('Freelance & Side Hustles', 'income', NULL),
+    ('Food & Dining', 'expense', NULL),
+    ('Groceries', 'expense', NULL),
+    ('Transport & Fuel', 'expense', NULL),
+    ('Rent & Utilities', 'expense', NULL),
+    ('Shopping', 'expense', NULL),
+    ('Entertainment', 'expense', NULL),
+    ('Healthcare', 'expense', NULL)
+ON CONFLICT DO NOTHING;
+
 

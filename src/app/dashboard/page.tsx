@@ -103,6 +103,14 @@ export default function Dashboard() {
     date: new Date().toISOString().slice(0, 10),
   });
 
+  const [selectedBudgetMonth, setSelectedBudgetMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [budgetModalError, setBudgetModalError] = useState<string | null>(null);
+  const [goalModalError, setGoalModalError] = useState<string | null>(null);
+  const [budgetSubmitting, setBudgetSubmitting] = useState(false);
+  const [goalSubmitting, setGoalSubmitting] = useState(false);
+  const [loadingBudgets, setLoadingBudgets] = useState(false);
+  const [loadingGoals, setLoadingGoals] = useState(false);
+
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
@@ -160,14 +168,46 @@ export default function Dashboard() {
     }
   }
 
-  async function loadDashboardData() {
+  async function fetchBudgets(month?: string) {
+    try {
+      setLoadingBudgets(true);
+      const targetM = month || selectedBudgetMonth;
+      const res = await fetch(`/api/budgets?month=${targetM}`);
+      if (res.ok) {
+        const data = await res.json();
+        setBudgets(data.budgets || []);
+      }
+    } catch (err: any) {
+      console.error('Fetch budgets error:', err?.message);
+    } finally {
+      setLoadingBudgets(false);
+    }
+  }
+
+  async function fetchGoals() {
+    try {
+      setLoadingGoals(true);
+      const res = await fetch('/api/goals');
+      if (res.ok) {
+        const data = await res.json();
+        setGoals(Array.isArray(data) ? data : (data.goals || []));
+      }
+    } catch (err: any) {
+      console.error('Fetch goals error:', err?.message);
+    } finally {
+      setLoadingGoals(false);
+    }
+  }
+
+  async function loadDashboardData(targetMonth?: string) {
     try {
       setLoading(true);
+      const bMonth = targetMonth || selectedBudgetMonth;
       const [sumRes, txRes, catRes, bRes, gRes] = await Promise.all([
         fetch('/api/transactions/summary'),
         fetch('/api/transactions/list?limit=50'),
         fetch('/api/transactions/category'),
-        fetch('/api/budgets'),
+        fetch(`/api/budgets?month=${bMonth}`),
         fetch('/api/goals'),
       ]);
 
@@ -192,7 +232,10 @@ export default function Dashboard() {
         const bData = await bRes.json();
         setBudgets(bData.budgets || []);
       }
-      if (gRes.ok) setGoals(await gRes.json());
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        setGoals(Array.isArray(gData) ? gData : (gData.goals || []));
+      }
     } catch (e: any) {
       console.error('Error fetching dashboard records:', e?.message);
     } finally {
@@ -291,39 +334,119 @@ export default function Dashboard() {
 
   async function handleAddBudget(e: React.FormEvent) {
     e.preventDefault();
-    if (!newBudget.amount || !newBudget.category_id) return;
+    if (!newBudget.amount || parseFloat(newBudget.amount) <= 0) {
+      setBudgetModalError('Please enter a budget amount greater than 0');
+      return;
+    }
+    if (!newBudget.category_id) {
+      setBudgetModalError('Please select an expense category');
+      return;
+    }
+
+    setBudgetSubmitting(true);
+    setBudgetModalError(null);
     try {
       const res = await fetch('/api/budgets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newBudget),
       });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        let errMsg = errData.error || 'Failed to create budget';
+        if (res.status === 409) {
+          errMsg = 'Budget already exists for this category this month.';
+        } else if (res.status === 403) {
+          errMsg = 'This category is unavailable or access denied.';
+        }
+        setBudgetModalError(errMsg);
+        return;
+      }
+
+      setShowAddBudgetModal(false);
+      setBudgetModalError(null);
+      setNewBudget({
+        category_id: '',
+        amount: '',
+        month: selectedBudgetMonth,
+      });
+      await fetchBudgets(newBudget.month || selectedBudgetMonth);
+      setFeedbackMsg({ type: 'success', text: 'Budget created successfully!' });
+    } catch {
+      setBudgetModalError('Could not save budget. Please try again.');
+    } finally {
+      setBudgetSubmitting(false);
+    }
+  }
+
+  async function handleDeleteBudget(id: string) {
+    if (!confirm('Are you sure you want to delete this budget?')) return;
+    try {
+      const res = await fetch(`/api/budgets?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
-        setShowAddBudgetModal(false);
-        setNewBudget({ category_id: '', amount: '', month: new Date().toISOString().slice(0, 7) });
-        loadDashboardData();
+        await fetchBudgets(selectedBudgetMonth);
+        setFeedbackMsg({ type: 'success', text: 'Budget deleted successfully' });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to delete budget');
       }
     } catch (err: any) {
-      console.error('Budget error:', err?.message);
+      console.error('Delete budget error:', err?.message);
     }
   }
 
   async function handleAddGoal(e: React.FormEvent) {
     e.preventDefault();
-    if (!newGoal.title || !newGoal.target_amount) return;
+    if (!newGoal.title.trim()) {
+      setGoalModalError('Goal title is required');
+      return;
+    }
+    if (!newGoal.target_amount || parseFloat(newGoal.target_amount) <= 0) {
+      setGoalModalError('Target amount must be greater than 0');
+      return;
+    }
+
+    setGoalSubmitting(true);
+    setGoalModalError(null);
     try {
       const res = await fetch('/api/goals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newGoal),
       });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        setGoalModalError(errData.error || 'Could not save goal. Please try again.');
+        return;
+      }
+
+      setShowAddGoalModal(false);
+      setGoalModalError(null);
+      setNewGoal({ title: '', target_amount: '', current_amount: '0', target_date: '' });
+      await fetchGoals();
+      setFeedbackMsg({ type: 'success', text: 'Savings goal created successfully!' });
+    } catch {
+      setGoalModalError('Could not save goal. Please try again.');
+    } finally {
+      setGoalSubmitting(false);
+    }
+  }
+
+  async function handleDeleteGoal(id: string) {
+    if (!confirm('Are you sure you want to delete this savings goal?')) return;
+    try {
+      const res = await fetch(`/api/goals?id=${id}`, { method: 'DELETE' });
       if (res.ok) {
-        setShowAddGoalModal(false);
-        setNewGoal({ title: '', target_amount: '', current_amount: '0', target_date: '' });
-        loadDashboardData();
+        await fetchGoals();
+        setFeedbackMsg({ type: 'success', text: 'Savings goal deleted successfully' });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to delete goal');
       }
     } catch (err: any) {
-      console.error('Goal error:', err?.message);
+      console.error('Delete goal error:', err?.message);
     }
   }
 
@@ -671,20 +794,46 @@ export default function Dashboard() {
         {/* TAB 2: Budgets */}
         {activeTab === 'budgets' && (
           <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">Category Spending Limits</h2>
                 <p className="text-xs text-slate-500">Track and constrain monthly spending with automatic alerts</p>
               </div>
-              <button
-                onClick={() => setShowAddBudgetModal(true)}
-                className="bg-blue-600 text-white text-xs sm:text-sm font-medium px-4 py-2 rounded-xl hover:bg-blue-700 transition"
-              >
-                + New Budget
-              </button>
+              <div className="flex items-center gap-3">
+                <input
+                  type="month"
+                  value={selectedBudgetMonth}
+                  onChange={(e) => {
+                    const m = e.target.value;
+                    setSelectedBudgetMonth(m);
+                    fetchBudgets(m);
+                  }}
+                  className="text-xs sm:text-sm bg-white border border-slate-200 rounded-xl px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={() => {
+                    const firstExpCat = categories.find((c) => c.type === 'expense') || categories[0];
+                    setNewBudget({
+                      category_id: firstExpCat ? firstExpCat.id : '',
+                      amount: '',
+                      month: selectedBudgetMonth,
+                    });
+                    setBudgetModalError(null);
+                    setShowAddBudgetModal(true);
+                  }}
+                  className="bg-blue-600 text-white text-xs sm:text-sm font-medium px-4 py-2 rounded-xl hover:bg-blue-700 transition flex items-center gap-1.5 shadow-sm"
+                >
+                  <Plus size={16} /> New Budget
+                </button>
+              </div>
             </div>
 
-            {budgets.length === 0 ? (
+            {loadingBudgets ? (
+              <div className="bg-white p-12 text-center rounded-2xl border border-slate-200 text-slate-400">
+                <RefreshCw size={32} className="mx-auto mb-2 text-blue-600 animate-spin" />
+                <p className="font-semibold text-slate-700">Loading budgets...</p>
+              </div>
+            ) : budgets.length === 0 ? (
               <div className="bg-white p-12 text-center rounded-2xl border border-slate-200 text-slate-400">
                 <PieChart size={40} className="mx-auto mb-2 text-slate-300" />
                 <p className="font-semibold text-slate-700">No active budgets for this month.</p>
@@ -699,17 +848,26 @@ export default function Dashboard() {
                         <h4 className="font-bold text-slate-800">{b.category_name}</h4>
                         <p className="text-xs text-slate-400">{b.month}</p>
                       </div>
-                      <span
-                        className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-                          b.is_exceeded
-                            ? 'bg-rose-100 text-rose-700'
-                            : b.percentage >= 80
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-emerald-100 text-emerald-700'
-                        }`}
-                      >
-                        {b.percentage}%
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`text-xs font-bold px-2.5 py-1 rounded-full ${
+                            b.is_exceeded
+                              ? 'bg-rose-100 text-rose-700'
+                              : b.percentage >= 80
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-emerald-100 text-emerald-700'
+                          }`}
+                        >
+                          {b.percentage}%
+                        </span>
+                        <button
+                          onClick={() => handleDeleteBudget(b.id)}
+                          className="text-slate-300 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition"
+                          title="Delete budget"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
 
                     <div>
@@ -722,14 +880,14 @@ export default function Dashboard() {
                         />
                       </div>
                       <div className="flex justify-between text-xs font-medium text-slate-500 mt-2">
-                        <span>Spent: ${b.spent.toFixed(2)}</span>
-                        <span>Limit: ${b.amount.toFixed(2)}</span>
+                        <span>Spent: {formatCurrency(b.spent)}</span>
+                        <span>Limit: {formatCurrency(b.amount)}</span>
                       </div>
                     </div>
 
                     {b.is_exceeded && (
                       <p className="text-xs text-rose-600 font-semibold bg-rose-50 p-2 rounded-lg">
-                        ⚠️ Budget exceeded by ${(b.spent - b.amount).toFixed(2)}!
+                        ⚠️ Budget exceeded by {formatCurrency(b.spent - b.amount)}!
                       </p>
                     )}
                   </div>
@@ -748,14 +906,23 @@ export default function Dashboard() {
                 <p className="text-xs text-slate-500">Plan and track progress toward major financial goals</p>
               </div>
               <button
-                onClick={() => setShowAddGoalModal(true)}
-                className="bg-blue-600 text-white text-xs sm:text-sm font-medium px-4 py-2 rounded-xl hover:bg-blue-700 transition"
+                onClick={() => {
+                  setNewGoal({ title: '', target_amount: '', current_amount: '0', target_date: '' });
+                  setGoalModalError(null);
+                  setShowAddGoalModal(true);
+                }}
+                className="bg-blue-600 text-white text-xs sm:text-sm font-medium px-4 py-2 rounded-xl hover:bg-blue-700 transition flex items-center gap-1.5 shadow-sm"
               >
-                + New Goal
+                <Plus size={16} /> New Goal
               </button>
             </div>
 
-            {goals.length === 0 ? (
+            {loadingGoals ? (
+              <div className="bg-white p-12 text-center rounded-2xl border border-slate-200 text-slate-400">
+                <RefreshCw size={32} className="mx-auto mb-2 text-blue-600 animate-spin" />
+                <p className="font-semibold text-slate-700">Loading savings goals...</p>
+              </div>
+            ) : goals.length === 0 ? (
               <div className="bg-white p-12 text-center rounded-2xl border border-slate-200 text-slate-400">
                 <Target size={40} className="mx-auto mb-2 text-slate-300" />
                 <p className="font-semibold text-slate-700">No savings goals created.</p>
@@ -774,9 +941,18 @@ export default function Dashboard() {
                           </p>
                         )}
                       </div>
-                      <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800">
-                        {g.progress_percentage}%
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-100 text-blue-800">
+                          {g.progress_percentage}%
+                        </span>
+                        <button
+                          onClick={() => handleDeleteGoal(g.id)}
+                          className="text-slate-300 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 transition"
+                          title="Delete goal"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </div>
 
                     <div>
@@ -787,8 +963,8 @@ export default function Dashboard() {
                         />
                       </div>
                       <div className="flex justify-between text-xs font-medium text-slate-500 mt-2">
-                        <span>Saved: ${g.current_amount.toFixed(2)}</span>
-                        <span>Goal: ${g.target_amount.toFixed(2)}</span>
+                        <span>Saved: {formatCurrency(g.current_amount)}</span>
+                        <span>Goal: {formatCurrency(g.target_amount)}</span>
                       </div>
                     </div>
                   </div>
@@ -1027,20 +1203,51 @@ export default function Dashboard() {
 
       {/* MODAL 2: Add Budget */}
       {showAddBudgetModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-xl text-slate-900">Add Monthly Budget</h3>
-              <button onClick={() => setShowAddBudgetModal(false)} className="text-slate-400 hover:text-slate-600">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAddBudgetModal(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShowAddBudgetModal(false);
+          }}
+        >
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto">
+            <div className="flex justify-between items-center mb-5 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-xl text-slate-900">Add Monthly Budget</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Constrain category spending for {selectedBudgetMonth}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddBudgetModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition"
+              >
                 <X size={20} />
               </button>
             </div>
+
+            {budgetModalError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-center justify-between mb-4">
+                <span>{budgetModalError}</span>
+                <button
+                  type="button"
+                  onClick={() => setBudgetModalError(null)}
+                  className="text-rose-400 hover:text-rose-600"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
             <form onSubmit={handleAddBudget} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Category</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Expense Category</label>
                 <select
                   required
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl"
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-900"
                   value={newBudget.category_id}
                   onChange={(e) => setNewBudget({ ...newBudget, category_id: e.target.value })}
                 >
@@ -1055,33 +1262,57 @@ export default function Dashboard() {
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Budget Limit ($)</label>
-                <input
-                  type="number"
-                  step="1"
-                  required
-                  placeholder="5000"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl"
-                  value={newBudget.amount}
-                  onChange={(e) => setNewBudget({ ...newBudget, amount: e.target.value })}
-                />
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Monthly Limit ({CURRENCY_CONFIG.symbol})
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">
+                    {CURRENCY_CONFIG.symbol}
+                  </span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    required
+                    placeholder="5000"
+                    className="w-full pl-9 pr-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-900"
+                    value={newBudget.amount}
+                    onChange={(e) => setNewBudget({ ...newBudget, amount: e.target.value })}
+                  />
+                </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Month</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Target Month</label>
                 <input
                   type="month"
                   required
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl"
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-900"
                   value={newBudget.month}
                   onChange={(e) => setNewBudget({ ...newBudget, month: e.target.value })}
                 />
               </div>
-              <button
-                type="submit"
-                className="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition mt-2"
-              >
-                Create Budget
-              </button>
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddBudgetModal(false)}
+                  className="w-1/2 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={budgetSubmitting}
+                  className="w-1/2 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {budgetSubmitting ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    'Save Budget'
+                  )}
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -1089,64 +1320,128 @@ export default function Dashboard() {
 
       {/* MODAL 3: Add Goal */}
       {showAddGoalModal && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="font-bold text-xl text-slate-900">Create Savings Goal</h3>
-              <button onClick={() => setShowAddGoalModal(false)} className="text-slate-400 hover:text-slate-600">
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAddGoalModal(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setShowAddGoalModal(false);
+          }}
+        >
+          <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto">
+            <div className="flex justify-between items-center mb-5 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-xl text-slate-900">Create Savings Goal</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Track financial milestones with real progress</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddGoalModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition"
+              >
                 <X size={20} />
               </button>
             </div>
+
+            {goalModalError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-center justify-between mb-4">
+                <span>{goalModalError}</span>
+                <button
+                  type="button"
+                  onClick={() => setGoalModalError(null)}
+                  className="text-rose-400 hover:text-rose-600"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
             <form onSubmit={handleAddGoal} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Goal Title</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Goal Title</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. New Laptop"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl"
+                  maxLength={150}
+                  placeholder="e.g. Emergency Fund / Laptop"
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-900"
                   value={newGoal.title}
                   onChange={(e) => setNewGoal({ ...newGoal, title: e.target.value })}
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Target Amount ($)</label>
-                <input
-                  type="number"
-                  step="1"
-                  required
-                  placeholder="1500"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl"
-                  value={newGoal.target_amount}
-                  onChange={(e) => setNewGoal({ ...newGoal, target_amount: e.target.value })}
-                />
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Target Amount ({CURRENCY_CONFIG.symbol})
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">
+                    {CURRENCY_CONFIG.symbol}
+                  </span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="1"
+                    required
+                    placeholder="60000"
+                    className="w-full pl-9 pr-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-900"
+                    value={newGoal.target_amount}
+                    onChange={(e) => setNewGoal({ ...newGoal, target_amount: e.target.value })}
+                  />
+                </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Already Saved ($)</label>
-                <input
-                  type="number"
-                  step="1"
-                  placeholder="200"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl"
-                  value={newGoal.current_amount}
-                  onChange={(e) => setNewGoal({ ...newGoal, current_amount: e.target.value })}
-                />
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Already Saved ({CURRENCY_CONFIG.symbol})
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-3 text-slate-400 font-bold text-sm">
+                    {CURRENCY_CONFIG.symbol}
+                  </span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="10000"
+                    className="w-full pl-9 pr-4 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-900"
+                    value={newGoal.current_amount}
+                    onChange={(e) => setNewGoal({ ...newGoal, current_amount: e.target.value })}
+                  />
+                </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 uppercase mb-1">Target Date</label>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Target Date (Optional)</label>
                 <input
                   type="date"
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl"
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium text-slate-900"
                   value={newGoal.target_date}
                   onChange={(e) => setNewGoal({ ...newGoal, target_date: e.target.value })}
                 />
               </div>
-              <button
-                type="submit"
-                className="w-full py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition mt-2"
-              >
-                Create Goal
-              </button>
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddGoalModal(false)}
+                  className="w-1/2 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={goalSubmitting}
+                  className="w-1/2 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition shadow-md disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {goalSubmitting ? (
+                    <>
+                      <RefreshCw size={14} className="animate-spin" /> Saving...
+                    </>
+                  ) : (
+                    'Save Goal'
+                  )}
+                </button>
+              </div>
             </form>
           </div>
         </div>

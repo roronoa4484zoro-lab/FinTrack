@@ -31,4 +31,6 @@ The goal is to build a secure personal finance tracker that allows users to mana
 - [x] Phase 8: Search, Filtering & Pagination
 - [x] Phase 9: CSV Export & Monthly Reporting
 - [x] Phase 10: Security Headers & Production Build Verification
+- [x] Phase 11: Budgets & Savings Goals Persistence (Full REST CRUD, PostgreSQL table constraints, spending aggregation from expense transactions, progress calculation, duplicate prevention)
+- [x] Phase 12: Unified Category Ownership & Authorization Architecture (User-isolated + global default categories, IDOR protection, in-dialog validation, and persistent multi-worker local SQL engine)
 

@@ -915,3 +915,60 @@ Actions Taken:
 * Executed `npm run dev` in daemon background mode
 * Tested HTTP 200 responses on http://localhost:3000/login and http://localhost:3000/register
 * Appended turn log entry to docs/logs.txt, committed, and pushed to remote GitHub repository
+================================================================================
+[2026-10-06T14:46:15+05:30] Full Persistence for Budgets & Goals & Category Authorization Architecture
+================================================================================
+User Prompt (verbatim):
+You are debugging and completing the existing FinTrack application.
+
+CURRENT BUG: Budgets & Savings Goals persistence, count updates, and Category access authorization mismatch.
+
+Agent Response:
+Diagnosed and fully resolved both systemic issues across backend and frontend:
+1. Category Ownership & Authorization:
+   - Root cause: categories were seeded with `user_id = NULL` (global defaults) or per-user, but transaction authorization query strictly checked `WHERE id = $1 AND user_id = $2`, rejecting all global default categories with 403 Forbidden.
+   - Fixed category authorization in `src/app/api/transactions/route.ts` and `src/app/api/budgets/route.ts` to allow `WHERE id = $1 AND (user_id = $2 OR user_id IS NULL)`, while strictly denying cross-user private categories (IDOR-safe).
+2. Budgets & Savings Goals Persistence:
+   - Root cause: PostgreSQL tables existed or needed updated schemas, and the resilient local store in `src/lib/db.ts` lacked query parsing for `budgets` and `goals`, returning empty arrays `{ rows: [] }` on creation and listing.
+   - Migrated PostgreSQL tables: added `updated_at`, unique constraints `UNIQUE (user_id, category_id, month)`, and seeded default categories.
+   - Built full RESTful CRUD: `GET`, `POST`, `PATCH`, `DELETE` in `/api/budgets`, `/api/budgets/[id]`, `/api/goals`, and `/api/goals/[id]`.
+   - Budget spending aggregation: dynamically calculated from authenticated user's expense transactions for the selected month, computing spending, remaining balance, and usage percentage.
+   - Savings goals progress: calculated deterministically server-side (`Math.round(current / target * 100)`).
+   - Duplicate prevention: rejected duplicate budget for same user/category/month with HTTP 409 Conflict.
+   - Frontend UI: integrated live backend counts (`Monthly Budgets (${budgets.length})`, `Savings Goals (${goals.length})`), month selector filter, card delete actions, in-dialog validation error banners, loading spinners, and INR (`₹`) formatting.
+3. Verification:
+   - Automated test suite passed 100%: verified all 18 categories create transactions (201), cross-user IDOR blocked (403), duplicate budget blocked (409), budget CRUD and spending calculations verified, goal CRUD and progress calculations verified, and database direct persistence verified.
+   - `npm test` passed 5/5 security & unit tests.
+   - `next build` compiled all 20 routes with zero errors.
+
+Agent Response Summary:
+Implemented complete persistent backend and frontend systems for Budgets and Savings Goals with full REST CRUD, PostgreSQL constraints, and dynamic spending/progress metrics. Unified category ownership model supporting global and user-owned categories with robust IDOR defenses. Verified with automated end-to-end testing, unit tests, and successful Next.js production build.
+
+Commit SHA:
+f9ce16a
+
+Files Modified / Created:
+* database/schema.sql (Modified)
+* src/lib/db.ts (Modified)
+* src/types/index.ts (Modified)
+* src/app/api/budgets/route.ts (Modified)
+* src/app/api/budgets/[id]/route.ts (Created)
+* src/app/api/goals/route.ts (Modified)
+* src/app/api/goals/[id]/route.ts (Created)
+* src/app/api/transactions/route.ts (Modified)
+* src/app/api/transactions/category/route.ts (Modified)
+* src/app/dashboard/page.tsx (Modified)
+* docs/APPROACH.md (Modified)
+* scripts/migrate.js (Created)
+* scripts/test_budgets_goals.js (Created)
+* docs/logs.txt (Modified)
+
+Actions Taken:
+* Executed database migration adding updated_at and indexes in PostgreSQL
+* Added full Budgets & Goals query engine in src/lib/db.ts
+* Hardened category authorization queries for global and user categories
+* Added RESTful routes /api/budgets/[id] and /api/goals/[id]
+* Updated dashboard with month filters, delete handlers, error banners, and INR symbols
+* Ran comprehensive test suite (scripts/test_budgets_goals.js)
+* Ran security test suite (npm test)
+* Compiled production release (next build)

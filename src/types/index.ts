@@ -34,8 +34,10 @@ export interface Budget {
   spent?: number;
   remaining?: number;
   percentage?: number;
+  is_exceeded?: boolean;
   month: string; // YYYY-MM
   created_at?: string | Date;
+  updated_at?: string | Date;
 }
 
 export interface FinancialGoal {
@@ -47,7 +49,10 @@ export interface FinancialGoal {
   target_date?: string | null;
   progress_percentage?: number;
   created_at?: string | Date;
+  updated_at?: string | Date;
 }
+
+export type SavingsGoal = FinancialGoal;
 
 export interface RecurringTransaction {
   id: string;
