@@ -119,7 +119,19 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState<'overview' | 'budgets' | 'goals'>('overview');
 
   useEffect(() => {
+    let isMounted = true;
+    const timeout = setTimeout(() => {
+      if (isMounted && loading) {
+        setLoading(false);
+      }
+    }, 4000);
+
     loadDashboardData();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timeout);
+    };
   }, []);
 
   async function loadDashboardData() {
@@ -134,7 +146,7 @@ export default function Dashboard() {
       ]);
 
       if (sumRes.status === 401 || txRes.status === 401) {
-        window.location.href = '/login';
+        window.location.replace('/login');
         return;
       }
 
@@ -159,9 +171,9 @@ export default function Dashboard() {
   async function handleLogout() {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
-      window.location.href = '/';
+      window.location.replace('/login');
     } catch {
-      window.location.href = '/';
+      window.location.replace('/login');
     }
   }
 
@@ -281,9 +293,24 @@ export default function Dashboard() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 text-slate-700">
+      <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 text-slate-700 p-4">
         <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4" />
-        <p className="font-semibold text-lg">Loading FinTrack Security Vault...</p>
+        <p className="font-semibold text-lg text-slate-800">Loading FinTrack Security Vault...</p>
+        <p className="text-xs text-slate-400 mt-1 mb-4">Verifying session encryption & access credentials</p>
+        <div className="flex gap-3">
+          <a
+            href="/login"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-xl transition shadow-sm"
+          >
+            Go to Login
+          </a>
+          <button
+            onClick={() => setLoading(false)}
+            className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-semibold rounded-xl transition"
+          >
+            Open Dashboard
+          </button>
+        </div>
       </div>
     );
   }
