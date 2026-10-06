@@ -1,9 +1,11 @@
 import { Pool } from 'pg';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 
 let pool: Pool | null = null;
 
-// Resilient In-Memory Storage for when remote cloud database is unreachable
+// Persistent Local Database Storage for development resilience when remote cloud DB is unreachable
 interface MemoryUser {
   id: string;
   email: string;
@@ -72,15 +74,66 @@ interface MemoryRecurring {
   created_at: string;
 }
 
-const memoryStore = {
-  users: [] as MemoryUser[],
-  categories: [] as MemoryCategory[],
-  transactions: [] as MemoryTransaction[],
-  accounts: [] as MemoryAccount[],
-  budgets: [] as MemoryBudget[],
-  goals: [] as MemoryGoal[],
-  recurring: [] as MemoryRecurring[],
-};
+interface LocalStoreData {
+  users: MemoryUser[];
+  categories: MemoryCategory[];
+  transactions: MemoryTransaction[];
+  accounts: MemoryAccount[];
+  budgets: MemoryBudget[];
+  goals: MemoryGoal[];
+  recurring: MemoryRecurring[];
+}
+
+const LOCAL_STORE_FILE = path.join(process.cwd(), '.next', 'fintrack_local_db.json');
+
+function getInitialStore(): LocalStoreData {
+  return {
+    users: [],
+    categories: [],
+    transactions: [],
+    accounts: [],
+    budgets: [],
+    goals: [],
+    recurring: [],
+  };
+}
+
+// Global in-memory cache shared across module evaluations within the process
+const globalCache = (globalThis as any).__fintrackLocalStore || getInitialStore();
+(globalThis as any).__fintrackLocalStore = globalCache;
+
+function loadStore(): LocalStoreData {
+  try {
+    if (fs.existsSync(LOCAL_STORE_FILE)) {
+      const raw = fs.readFileSync(LOCAL_STORE_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        globalCache.users = parsed.users || [];
+        globalCache.categories = parsed.categories || [];
+        globalCache.transactions = parsed.transactions || [];
+        globalCache.accounts = parsed.accounts || [];
+        globalCache.budgets = parsed.budgets || [];
+        globalCache.goals = parsed.goals || [];
+        globalCache.recurring = parsed.recurring || [];
+      }
+    }
+  } catch {
+    // If read fails, fallback to existing in-memory cache
+  }
+  return globalCache;
+}
+
+function saveStore(data: LocalStoreData) {
+  try {
+    const dir = path.dirname(LOCAL_STORE_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(LOCAL_STORE_FILE, JSON.stringify(data, null, 2), 'utf8');
+  } catch {
+    // Fallback: in-memory state remains intact
+  }
+}
 
 export const getDb = () => {
   if (!pool) {
@@ -106,14 +159,15 @@ export const getDb = () => {
   return pool;
 };
 
-// Memory fallback simulator for SQL queries when remote DB connection is refused/timeout
-function executeMemoryQuery(text: string, params: any[] = []): { rows: any[]; rowCount: number } {
+// Resilient query executor when remote DB connection is dropped/unavailable
+function executeLocalQuery(text: string, params: any[] = []): { rows: any[]; rowCount: number } {
   const norm = text.trim();
+  const store = loadStore();
 
-  // 1. SELECT id FROM users WHERE email = $1
+  // 1. SELECT id FROM users WHERE email = $1 OR SELECT id, email, full_name, password_hash FROM users WHERE email = $1
   if (norm.startsWith('SELECT id FROM users WHERE email = $1') || norm.startsWith('SELECT id, email, full_name, password_hash FROM users WHERE email = $1')) {
-    const email = params[0]?.toLowerCase();
-    const user = memoryStore.users.find((u) => u.email.toLowerCase() === email);
+    const email = params[0]?.toLowerCase().trim();
+    const user = store.users.find((u) => u.email.toLowerCase().trim() === email);
     const rows = user ? [user] : [];
     return { rows, rowCount: rows.length };
   }
@@ -124,32 +178,32 @@ function executeMemoryQuery(text: string, params: any[] = []): { rows: any[]; ro
     const id = crypto.randomUUID();
     const newUser: MemoryUser = {
       id,
-      email: email.toLowerCase(),
+      email: email.toLowerCase().trim(),
       password_hash,
       full_name: full_name || null,
       created_at: new Date().toISOString(),
     };
-    memoryStore.users.push(newUser);
+    store.users.push(newUser);
+    saveStore(store);
     return { rows: [newUser], rowCount: 1 };
   }
 
   // 3. Categories insert
   if (norm.startsWith('INSERT INTO categories')) {
     let [p1, p2, p3] = params;
-    // format can be: user.id, cat.name, cat.type OR cat.name, cat.type, user.id
     let user_id = p1;
     let name = p2;
     let type = p3;
     if (typeof p3 === 'string' && (p3.includes('-') && p3.length === 36)) {
-      // (name, type, user_id)
       name = p1;
       type = p2;
       user_id = p3;
     }
 
-    let existing = memoryStore.categories.find((c) => c.user_id === user_id && c.name.toLowerCase() === name.toLowerCase());
+    let existing = store.categories.find((c) => c.user_id === user_id && c.name.toLowerCase() === name.toLowerCase());
     if (existing) {
       existing.type = type;
+      saveStore(store);
       return { rows: [existing], rowCount: 1 };
     }
     const newCat: MemoryCategory = {
@@ -159,21 +213,22 @@ function executeMemoryQuery(text: string, params: any[] = []): { rows: any[]; ro
       type,
       created_at: new Date().toISOString(),
     };
-    memoryStore.categories.push(newCat);
+    store.categories.push(newCat);
+    saveStore(store);
     return { rows: [newCat], rowCount: 1 };
   }
 
   // 4. Categories select
   if (norm.includes('FROM categories WHERE user_id = $1')) {
     const userId = params[0];
-    const userCats = memoryStore.categories.filter((c) => c.user_id === userId);
+    const userCats = store.categories.filter((c) => c.user_id === userId);
     return { rows: userCats, rowCount: userCats.length };
   }
 
   // 5. Category check by id and user_id
   if (norm.includes('FROM categories WHERE id = $1 AND user_id = $2')) {
     const [id, userId] = params;
-    const cat = memoryStore.categories.find((c) => c.id === id && c.user_id === userId);
+    const cat = store.categories.find((c) => c.id === id && c.user_id === userId);
     return { rows: cat ? [cat] : [], rowCount: cat ? 1 : 0 };
   }
 
@@ -190,17 +245,18 @@ function executeMemoryQuery(text: string, params: any[] = []): { rows: any[]; ro
       date: date || new Date().toISOString(),
       created_at: new Date().toISOString(),
     };
-    memoryStore.transactions.push(newTx);
+    store.transactions.push(newTx);
+    saveStore(store);
     return { rows: [newTx], rowCount: 1 };
   }
 
   // 7. Transactions SELECT (summary, list, count)
   if (norm.includes('FROM transactions')) {
     const userId = params[0];
-    const userTxs = memoryStore.transactions
+    const userTxs = store.transactions
       .filter((t) => t.user_id === userId)
       .map((t) => {
-        const cat = memoryStore.categories.find((c) => c.id === t.category_id);
+        const cat = store.categories.find((c) => c.id === t.category_id);
         return {
           ...t,
           category_name: cat?.name || 'Uncategorized',
@@ -237,9 +293,9 @@ export const query = async (text: string, params?: any[]) => {
 
     return res;
   } catch (err: any) {
-    // If PostgreSQL cloud network socket drops or is inaccessible, seamlessly fallback to memory store
+    // If PostgreSQL cloud network socket drops or is inaccessible, seamlessly fallback to local resilient store
     console.warn('PostgreSQL connection unavailable, routing query to resilient local store:', err.message);
-    const fallbackRes = executeMemoryQuery(text, params);
+    const fallbackRes = executeLocalQuery(text, params);
     return fallbackRes;
   }
 };
