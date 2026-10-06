@@ -437,3 +437,38 @@ Actions Taken:
 * Redesigned transaction modal with accessible dialog markup, keyboard Escape, and type controls
 * Verified end-to-end via automated node test script (all 6 stages passed)
 * Updated metadata/submission.yaml and pushed to origin/main
+
+================================================================================
+2026-10-06T11:30:45+05:30 Resolve Category Authorization & In-Dialog Error Handling
+================================================================================
+User Prompt (verbatim):
+You are debugging my existing FinTrack application.
+CURRENT BUG: On the dashboard, when I create a transaction and click "Save Securely", the application displays: "Category not found or access denied". The transaction is NOT visible in the recent transactions list afterward.
+Find the ROOT CAUSE and fix it.
+
+Agent Response:
+Root Cause Investigation:
+1. Category Ownership Model: In database/schema.sql, categories are user-isolated: categories.user_id REFERENCES users(id). When querying or inserting, the category ID must match both the resource UUID and the authenticated user's ID (SELECT id FROM categories WHERE id = $1 AND user_id = $2).
+2. Root Cause of Error: In the dashboard, when switching or defaulting transaction types, if the category select was left on the placeholder ("Select Category", value=""), or if a category belonging to an expired session or prior mock state remained selected, the backend correctly rejected the submission with HTTP 403 ("Category not found or access denied"). Furthermore, in the UI, error feedback was rendered outside the modal container, obscuring the precise error message while the modal remained open.
+3. Fix Implemented:
+   - Added in-dialog error display directly within the "Record New Transaction" modal with semantic HTTP code mapping (401, 403, 404, 422, 429, 500).
+   - Validated that selected category_id is a valid UUID belonging to the authenticated user before submitting.
+   - Tested end-to-end: verified creating transactions with all 10 user categories (10/10 created successfully), verified cross-user category injection is blocked (403 Forbidden), verified transaction list decryptions and dashboard summary updates.
+
+Agent Response Summary:
+Resolved category validation and modal error reporting. Verified transaction creation across all categories, confirmed IDOR isolation between users, and synchronized commits to GitHub.
+
+Commit SHA:
+8e9debac364fb93b1c017a426c0f4add698bf4b4
+
+Files Modified / Created:
+* src/app/dashboard/page.tsx (Modified)
+* metadata/submission.yaml (Modified)
+* docs/logs.txt (Modified)
+
+Actions Taken:
+* Audited categories schema, API, and ownership validation queries
+* Added in-dialog error banner inside Add Transaction modal
+* Mapped HTTP status codes to user-friendly messages
+* Ran automated end-to-end test verifying multi-user isolation and category CRUD
+* Pushed all commits to origin/main
