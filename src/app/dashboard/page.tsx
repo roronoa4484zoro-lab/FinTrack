@@ -105,6 +105,7 @@ export default function Dashboard() {
 
   const [loadingCategories, setLoadingCategories] = useState(false);
   const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   const [newBudget, setNewBudget] = useState({
     category_id: '',
@@ -211,22 +212,22 @@ export default function Dashboard() {
   async function handleAddTransaction(e: React.FormEvent) {
     e.preventDefault();
     if (!newTx.amount || parseFloat(newTx.amount) <= 0) {
-      setFeedbackMsg({ type: 'error', text: 'Please enter a valid amount greater than 0' });
+      setModalError('Please enter a valid amount greater than 0');
       return;
     }
 
     if (!newTx.category_id) {
-      setFeedbackMsg({ type: 'error', text: 'Please select a valid category' });
+      setModalError('Please select a valid category from the list');
       return;
     }
 
     if (!newTx.date) {
-      setFeedbackMsg({ type: 'error', text: 'Please select a valid transaction date' });
+      setModalError('Please select a valid transaction date');
       return;
     }
 
     setTxSubmitting(true);
-    setFeedbackMsg(null);
+    setModalError(null);
     try {
       const res = await fetch('/api/transactions', {
         method: 'POST',
@@ -242,11 +243,24 @@ export default function Dashboard() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        setFeedbackMsg({ type: 'error', text: err.error || 'Failed to record transaction' });
+        let errMsg = err.error || 'Failed to record transaction';
+        if (res.status === 401) {
+          errMsg = 'Your session has expired. Please sign in again.';
+        } else if (res.status === 403) {
+          errMsg = "You don't have access to this category.";
+        } else if (res.status === 404) {
+          errMsg = 'Category not found.';
+        } else if (res.status === 422) {
+          errMsg = 'Please check the transaction details.';
+        } else if (res.status === 429) {
+          errMsg = 'Too many requests. Please try again later.';
+        }
+        setModalError(errMsg);
         return;
       }
 
       setShowAddTxModal(false);
+      setModalError(null);
       setNewTx({
         amount: '',
         category_id: '',
@@ -257,7 +271,7 @@ export default function Dashboard() {
       await loadDashboardData();
       setFeedbackMsg({ type: 'success', text: 'Transaction recorded securely!' });
     } catch {
-      setFeedbackMsg({ type: 'error', text: 'Error connecting to server. Please try again.' });
+      setModalError('Error connecting to server. Please try again.');
     } finally {
       setTxSubmitting(false);
     }
@@ -805,6 +819,19 @@ export default function Dashboard() {
                 <X size={20} />
               </button>
             </div>
+
+            {modalError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold rounded-xl flex items-center justify-between mb-4">
+                <span>{modalError}</span>
+                <button
+                  type="button"
+                  onClick={() => setModalError(null)}
+                  className="text-rose-400 hover:text-rose-600"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
 
             <form onSubmit={handleAddTransaction} className="space-y-5">
               {/* Transaction Type Segmented Control */}
