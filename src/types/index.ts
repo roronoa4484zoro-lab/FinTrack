@@ -1,8 +1,8 @@
 export interface User {
   id: string;
   email: string;
-  full_name: string;
-  created_at: Date;
+  full_name?: string | null;
+  created_at: string | Date;
 }
 
 export interface Category {
@@ -16,14 +16,71 @@ export interface Transaction {
   id: string;
   user_id: string;
   category_id: string;
-  amount: number; // We store the decrypted value in TS, but encrypted in DB
+  category_name?: string;
+  amount: number;
   description: string;
-  date: Date;
-  created_at: Date;
+  date: string | Date;
+  account_id?: string | null;
+  account_name?: string | null;
+  created_at?: string | Date;
+}
+
+export interface Budget {
+  id: string;
+  user_id: string;
+  category_id: string;
+  category_name?: string;
+  amount: number;
+  spent?: number;
+  remaining?: number;
+  percentage?: number;
+  month: string; // YYYY-MM
+  created_at?: string | Date;
+}
+
+export interface FinancialGoal {
+  id: string;
+  user_id: string;
+  title: string;
+  target_amount: number;
+  current_amount: number;
+  target_date?: string | null;
+  progress_percentage?: number;
+  created_at?: string | Date;
+}
+
+export interface RecurringTransaction {
+  id: string;
+  user_id: string;
+  category_id: string;
+  category_name?: string;
+  amount: number;
+  description: string;
+  frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  next_date: string;
+  is_active: boolean;
+  created_at?: string | Date;
+}
+
+export interface FinancialAccount {
+  id: string;
+  user_id: string;
+  name: string;
+  type: 'bank' | 'cash' | 'upi' | 'credit_card' | 'savings';
+  balance: number;
+  created_at?: string | Date;
 }
 
 export interface AuthSession {
   userId: string;
-  email: string;
-  role: 'user' | 'admin';
+  email?: string;
+  role?: 'user' | 'admin';
 }
+
+export interface ApiResponse<T = unknown> {
+  success?: boolean;
+  data?: T;
+  error?: string;
+  message?: string;
+}
+

@@ -1,40 +1,69 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
-const rateLimitMap = new Map<string, { count: number; lastReset: number }>();
+interface RateLimitRecord {
+  count: number;
+  lastReset: number;
+}
 
-const LIMIT = 100;
-const WINDOW = 60 * 1000;
+const rateLimitMap = new Map<string, RateLimitRecord>();
+
+// Automatic periodic cleanup to avoid memory leaks in long-running instances
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of rateLimitMap.entries()) {
+    if (now - record.lastReset > 5 * 60 * 1000) {
+      rateLimitMap.delete(key);
+    }
+  }
+}, 60 * 1000);
 
 export function rateLimitMiddleware(request: Request) {
+  const url = new URL(request.url);
+  const pathname = url.pathname;
+
   const forwardedFor = request.headers.get('x-forwarded-for');
   const realIp = request.headers.get('x-real-ip');
 
-  const identifier =
+  const ip =
     forwardedFor?.split(',')[0]?.trim() ||
     realIp ||
-    'unknown';
+    '127.0.0.1';
 
+  let limit = 120;
+  let windowMs = 60 * 1000;
+
+  // Stricter limits for brute-force vulnerable endpoints
+  if (pathname.includes('/api/auth/login') || pathname.includes('/api/auth/register')) {
+    limit = 20; // 20 attempts per minute
+    windowMs = 60 * 1000;
+  } else if (pathname.includes('/api/ai/')) {
+    limit = 15; // 15 AI prompts per minute
+    windowMs = 60 * 1000;
+  }
+
+  const key = `${ip}:${pathname.split('/')[2] || 'general'}`;
   const now = Date.now();
-  const userRate = rateLimitMap.get(identifier);
+  const record = rateLimitMap.get(key);
 
-  if (!userRate || now - userRate.lastReset >= WINDOW) {
-    rateLimitMap.set(identifier, {
+  if (!record || now - record.lastReset >= windowMs) {
+    rateLimitMap.set(key, {
       count: 1,
       lastReset: now,
     });
-
     return null;
   }
 
-  userRate.count++;
+  record.count++;
 
-  if (userRate.count > LIMIT) {
-    return new NextResponse(
-      'Too many requests. Please try again later.',
+  if (record.count > limit) {
+    const retrySecs = Math.ceil((windowMs - (now - record.lastReset)) / 1000);
+    return NextResponse.json(
+      { error: 'Too many requests. Please slow down and try again later.' },
       {
         status: 429,
         headers: {
-          'Retry-After': '60',
+          'Retry-After': String(retrySecs > 0 ? retrySecs : 60),
+          'Content-Type': 'application/json',
         },
       }
     );
@@ -42,3 +71,4 @@ export function rateLimitMiddleware(request: Request) {
 
   return null;
 }
+

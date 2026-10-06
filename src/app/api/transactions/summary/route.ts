@@ -1,21 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
-import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { decrypt } from '@/lib/encryption';
 
-const ENCRYPTION_KEY = process.env.JWT_SECRET || 'dev-secret-key';
-
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get('auth_token')?.value;
-
-    if (!token) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const userId = await getAuthUser(token);
+    const userId = await getAuthUser(request);
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -30,7 +20,8 @@ export async function GET() {
 
     result.rows.forEach((row: any) => {
       try {
-        const amount = parseFloat(decrypt(row.amount, ENCRYPTION_KEY));
+        const decryptedStr = decrypt(row.amount);
+        const amount = parseFloat(decryptedStr);
         if (isNaN(amount)) return;
 
         if (row.type === 'income') {
@@ -38,18 +29,27 @@ export async function GET() {
         } else {
           totalExpense += amount;
         }
-      } catch (e) {
-        console.error('Summary decryption error:', e);
+      } catch (e: any) {
+        console.error('Summary decryption warning:', e?.message);
       }
     });
 
-    return NextResponse.json({
-      totalIncome,
-      totalExpense,
-      balance: totalIncome - totalExpense,
-    }, { status: 200 });
+    const balance = totalIncome - totalExpense;
+    const savingsRate = totalIncome > 0 ? Math.max(0, Math.round(((totalIncome - totalExpense) / totalIncome) * 100)) : 0;
+
+    return NextResponse.json(
+      {
+        totalIncome: Number(totalIncome.toFixed(2)),
+        totalExpense: Number(totalExpense.toFixed(2)),
+        balance: Number(balance.toFixed(2)),
+        savingsRate,
+        transactionCount: result.rows.length,
+      },
+      { status: 200 }
+    );
   } catch (error: any) {
-    console.error('Summary error:', error);
+    console.error('Summary error:', error?.message);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getAuthUser } from '@/lib/auth';
 import { query } from '@/lib/db';
 
-// GET User Categories
+// GET Accounts
 export async function GET(request: Request) {
   try {
     const userId = await getAuthUser(request);
@@ -11,18 +11,18 @@ export async function GET(request: Request) {
     }
 
     const result = await query(
-      'SELECT id, name, type, created_at FROM categories WHERE user_id = $1 ORDER BY name ASC',
+      'SELECT id, name, type, balance, created_at FROM accounts WHERE user_id = $1 ORDER BY created_at ASC',
       [userId]
     );
 
     return NextResponse.json(result.rows, { status: 200 });
   } catch (error: any) {
-    console.error('Fetch categories error:', error?.message);
+    console.error('Accounts GET error:', error?.message);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-// CREATE Category
+// POST Create Account
 export async function POST(request: Request) {
   try {
     const userId = await getAuthUser(request);
@@ -32,38 +32,26 @@ export async function POST(request: Request) {
 
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== 'object') {
-      return NextResponse.json({ error: 'Invalid JSON request body' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid JSON request' }, { status: 400 });
     }
 
-    const { name, type } = body;
-
+    const { name, type, balance } = body;
     if (!name || typeof name !== 'string' || !name.trim()) {
-      return NextResponse.json({ error: 'Category name is required' }, { status: 400 });
+      return NextResponse.json({ error: 'Account name is required' }, { status: 400 });
     }
 
-    const normalizedName = name.trim().slice(0, 100);
-
-    if (type !== 'income' && type !== 'expense') {
-      return NextResponse.json({ error: 'Type must be either "income" or "expense"' }, { status: 400 });
-    }
+    const allowedTypes = ['bank', 'cash', 'upi', 'credit_card', 'savings'];
+    const accType = allowedTypes.includes(type) ? type : 'bank';
+    const numBalance = parseFloat(balance) || 0.00;
 
     const result = await query(
-      `INSERT INTO categories (name, type, user_id)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (user_id, name) DO UPDATE SET type = EXCLUDED.type
-       RETURNING id, name, type`,
-      [normalizedName, type, userId]
+      'INSERT INTO accounts (user_id, name, type, balance) VALUES ($1, $2, $3, $4) RETURNING id, name, type, balance, created_at',
+      [userId, name.trim().slice(0, 100), accType, numBalance]
     );
 
-    return NextResponse.json(
-      {
-        message: 'Category saved successfully',
-        category: result.rows[0],
-      },
-      { status: 201 }
-    );
+    return NextResponse.json({ message: 'Account created successfully', account: result.rows[0] }, { status: 201 });
   } catch (error: any) {
-    console.error('Category error:', error?.message);
+    console.error('Account POST error:', error?.message);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
