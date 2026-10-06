@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Lock, Mail, User, ArrowRight, ShieldCheck } from 'lucide-react';
+import { FinTrackLogoMark } from '@/components/FinTrackBrand';
 
 export default function RegisterPage() {
   const [mounted, setMounted] = useState(false);
@@ -44,10 +45,10 @@ export default function RegisterPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 shadow-xl p-8 space-y-6">
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-600 rounded-2xl text-white font-bold text-xl mb-1 shadow-md">
-            F
-          </div>
+        <div className="text-center space-y-2 flex flex-col items-center">
+          <Link href="/" className="group mb-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 rounded-2xl" aria-label="FinTrack Home">
+            <FinTrackLogoMark size="lg" />
+          </Link>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">Create Your Account</h1>
           <p className="text-xs text-slate-500 flex items-center justify-center gap-1.5">
             <ShieldCheck size={14} className="text-emerald-600" /> Instant encrypted vault & default categories
