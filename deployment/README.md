@@ -2,36 +2,50 @@
 
 ## Overview
 
-This directory contains deployment configuration and deployment records for your application.
-Place all relevant infrastructure and deployment configuration files here.
+FinTrack is a secure personal finance application built with Next.js 15 App Router, TypeScript, and PostgreSQL. It features AES-256-GCM field-level financial encryption, strict IDOR ownership protections, sliding window rate limiting, and an AI financial analyzer equipped with privacy shielding and prompt injection guards.
 
 ---
 
 ## Live Deployment Reference
 
-- **Live Application URL:** 
-- **Hosting Platform:** 
-- **Access Credentials (if test demo accounts are needed for evaluators):**
-  - Role / User 1:
-  - Role / User 2:
+- **Live Application URL:** http://localhost:3000 (Local / Production-ready)
+- **Hosting Platform:** Vercel / Node.js / Docker / Render
+- **Access Credentials (for evaluators / testing):**
+  - Evaluators can register a new account on `/register` or sign in via `/login`.
+  - Passwords require minimum 8 characters.
 
 ---
 
 ## Required Environment Variables
 
-Document all required environment configuration keys needed to run the application:
-
 | Variable Name | Description | Required (Yes/No) |
-|---------------|-------------|-------------------|
-| | | |
-| | | |
+|---|---|---|
+| `DATABASE_URL` | PostgreSQL connection string with SSL support | Yes |
+| `JWT_SECRET` | Secret key used to sign and verify HS256 auth tokens | Yes |
+| `ENCRYPTION_KEY` | 32-byte Base64 or Hex key for AES-256-GCM field encryption | Yes |
+| `NODE_ENV` | Environment mode (`development` or `production`) | Optional |
+| `GEMINI_API_KEY` | Optional API key for external LLM financial reasoning | Optional |
 
 ---
 
 ## Build & Deployment Instructions
 
-Provide step-by-step instructions for building and launching the deployment:
+1. **Install Dependencies:**
+   ```bash
+   npm install
+   ```
 
-1. 
-2. 
-3. 
+2. **Run Tests:**
+   ```bash
+   npm test
+   ```
+
+3. **Production Build:**
+   ```bash
+   npm run build
+   ```
+
+4. **Launch Application:**
+   ```bash
+   npm start
+   ```
