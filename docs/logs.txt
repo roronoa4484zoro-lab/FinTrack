@@ -224,3 +224,27 @@ Actions Taken:
 * Verified HTTP 307 redirect directly to /login
 * Executed tsc, npm test (5/5 passed), and npm run build (20 static pages compiled)
 
+================================================================================
+2026-10-06T10:53:25+05:30 Resolve Build-Cache 500 Internal Server Error & Restart Clean Server
+================================================================================
+User Prompt (verbatim):
+it showing as Internal Server Error and withte backgroudn as black
+
+Agent Response:
+Diagnosed the 500 error: running a production build (npm run build) while a background dev server (npm run dev) was actively serving created webpack runtime chunk mismatches (MODULE_NOT_FOUND ./181.js / ./611.js) in the .next server directory. Terminated the stale server task, completely cleared the corrupt .next build cache, and relaunched a clean development server. Verified /login renders cleanly with HTTP 200 OK. Staged and committed changes.
+
+Agent Response Summary:
+Purged corrupted .next webpack cache chunks and restarted the dev server. Verified GET /login returns 200 OK. All tests passing.
+
+Commit SHA:
+uncommitted
+
+Files Modified / Created:
+* docs/logs.txt (Modified)
+
+Actions Taken:
+* Terminated conflicting server process
+* Cleared stale .next cache
+* Started fresh Next.js development server
+* Verified /login (200 OK)
+
