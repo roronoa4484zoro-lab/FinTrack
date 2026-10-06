@@ -194,8 +194,8 @@ function executeMemoryQuery(text: string, params: any[] = []): { rows: any[]; ro
     return { rows: [newTx], rowCount: 1 };
   }
 
-  // 7. Transactions SELECT (summary or list)
-  if (norm.includes('FROM transactions') && norm.includes('WHERE t.user_id = $1') || norm.includes('WHERE user_id = $1')) {
+  // 7. Transactions SELECT (summary, list, count)
+  if (norm.includes('FROM transactions')) {
     const userId = params[0];
     const userTxs = memoryStore.transactions
       .filter((t) => t.user_id === userId)
@@ -204,9 +204,15 @@ function executeMemoryQuery(text: string, params: any[] = []): { rows: any[]; ro
         return {
           ...t,
           category_name: cat?.name || 'Uncategorized',
+          category_type: cat?.type || 'expense',
           type: cat?.type || 'expense',
         };
       });
+
+    if (norm.includes('COUNT(')) {
+      return { rows: [{ count: String(userTxs.length) }], rowCount: 1 };
+    }
+
     return { rows: userTxs, rowCount: userTxs.length };
   }
 
