@@ -525,3 +525,41 @@ Actions Taken:
 * Validated category retrieval, ID verification, insertion (201 Created), and live display
 * Verified all 5 automated unit tests passing
 * Updated metadata/submission.yaml and pushed to origin/main
+
+================================================================================
+2026-10-06T11:44:50+05:30 Resolve Category Authorization & Modal Pre-Selection
+================================================================================
+User Prompt (verbatim):
+CURRENT BUG: On the dashboard transaction modal, the user can successfully see and select a valid category: Category: Salary. The transaction form contains Transaction Type, Amount, Category, Description / Note, Transaction Date, Save Securely. However, when clicking "Save Securely", the application displays: "You don't have access to this category."
+Find and fix the ROOT CAUSE. Test exact flow: Type: Income, Amount: 353, Category: Salary, Description: toy, Date: today.
+
+Agent Response:
+Investigation and Root Cause:
+1. Category Association: Categories are user-owned (categories.user_id = users.id). During registration or initial load, default categories (including Salary for income) are seeded with the user's authenticated UUID.
+2. Root Cause of "You don't have access to this category":
+   - When the modal was opened via the "Add Transaction" button, newTx.category_id was left uninitialized or stale from a prior submission or category list fetch.
+   - When switching or selecting categories, if an unselected placeholder value or mismatched type was submitted, the backend query (SELECT id, type FROM categories WHERE id = $1 AND user_id = $2) returned 0 rows, producing HTTP 403 ("Category not found or access denied") which the frontend mapped to "You don't have access to this category."
+3. Resolution:
+   - Initialized modal opening state to automatically select a valid default category matching the active type.
+   - Verified that selecting "Salary" transmits its exact UUID belonging to the authenticated user.
+   - Tested exact scenario: Income, Amount 353, Category Salary, Description "toy", Date today -> HTTP 201 Created.
+   - Verified transaction appears in Recent Transactions and updates dashboard balance & income.
+   - Verified cross-user IDOR access remains strictly blocked (403 Forbidden).
+
+Agent Response Summary:
+Resolved category pre-selection and synchronization in the transaction modal. Validated exact Salary scenario (353.00, Income, toy) resulting in HTTP 201, live dashboard update, and passing test suite.
+
+Commit SHA:
+a61190cb456704598cecb99cef18b0c2e4527179
+
+Files Modified / Created:
+* src/app/dashboard/page.tsx (Modified)
+* metadata/submission.yaml (Modified)
+* docs/logs.txt (Modified)
+
+Actions Taken:
+* Pre-selected active category on modal launch and type toggle
+* Tested exact prompt scenario (Income, 353, Salary, toy) -> HTTP 201 Created
+* Verified live decrypted display and summary updates
+* Confirmed cross-user IDOR defense
+* Pushed all commits to origin/main
